@@ -220,6 +220,81 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+// Google / Matrix SSO Redirect URL discovery for Beeper
+app.get('/api/auth/sso-url', async (req, res) => {
+  const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+  const host = req.headers['x-forwarded-host'] || req.get('host');
+  const callbackUrl = `${proto}://${host}/api/auth/sso-callback`;
+
+  let ssoPath = '/_matrix/client/v3/login/sso/redirect';
+  try {
+    const flowsResp = await fetch('https://matrix.beeper.com/_matrix/client/v3/login', {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (flowsResp.ok) {
+      const flowsData = await flowsResp.json();
+      const ssoFlow = (flowsData.flows || []).find((f) => f.type === 'm.login.sso');
+      const googleIdp = (ssoFlow?.identity_providers || []).find(
+        (p) => /google/i.test(p.id || '') || /google/i.test(p.name || '')
+      );
+      if (googleIdp?.id) {
+        ssoPath = `/_matrix/client/v3/login/sso/redirect/${encodeURIComponent(googleIdp.id)}`;
+      }
+    }
+  } catch {
+    // Fallback to standard Matrix SSO redirect
+  }
+
+  const ssoUrl = `https://matrix.beeper.com${ssoPath}?redirectUrl=${encodeURIComponent(callbackUrl)}`;
+  res.json({ ok: true, ssoUrl, callbackUrl });
+});
+
+// Exchange Matrix SSO loginToken for access_token and store in browser localStorage
+app.get('/api/auth/sso-callback', async (req, res) => {
+  const loginToken = req.query.loginToken;
+  if (!loginToken) {
+    return res.redirect('/?sso_error=' + encodeURIComponent('Kein loginToken von Beeper erhalten.'));
+  }
+
+  try {
+    const resp = await fetch('https://matrix.beeper.com/_matrix/client/v3/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'm.login.token',
+        token: String(loginToken),
+        initial_device_display_name: 'Beeper Web (iPad)',
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || !data.access_token) {
+      const msg = data.error || 'Google/Beeper SSO-Anmeldung fehlgeschlagen';
+      return res.redirect('/?sso_error=' + encodeURIComponent(msg));
+    }
+
+    const userObj = {
+      id: data.user_id,
+      fullName: String(data.user_id || 'Beeper User').replace(/^@/, '').split(':')[0],
+      username: data.user_id,
+      deviceId: data.device_id,
+    };
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    return res.send(`<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Anmeldung…</title></head>
+<body><script>
+  localStorage.setItem('beeper_user', ${JSON.stringify(JSON.stringify(userObj))});
+  localStorage.setItem('beeper_auth_mode', 'matrix');
+  localStorage.setItem('beeper_demo', '0');
+  localStorage.setItem('beeper_token', ${JSON.stringify(data.access_token)});
+  window.location.replace('/');
+</script></body></html>`);
+  } catch (err) {
+    return res.redirect('/?sso_error=' + encodeURIComponent(err.message || 'SSO Fehler'));
+  }
+});
+
 async function matrixFetch(token, apiPath, options = {}) {
   const resp = await fetch(`https://matrix.beeper.com${apiPath}`, {
     method: options.method || 'GET',

@@ -1092,6 +1092,45 @@ textarea {
   cursor: pointer;
 }
 
+.m3-google-btn {
+  width: 100%;
+  padding: 12px 18px;
+  border-radius: 9999px;
+  border: 1px solid var(--md-outline);
+  background: var(--md-surface-low);
+  color: var(--md-on-surface);
+  font-weight: 700;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  cursor: pointer;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.15s ease;
+}
+
+.m3-google-btn:hover {
+  transform: scale(1.02);
+  background: var(--md-surface-high);
+}
+
+.m3-or-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--md-on-surface-variant);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.m3-or-divider::before,
+.m3-or-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--md-outline);
+}
+
 /* M3 Auth Modal */
 .m3-modal-backdrop {
   position: fixed;

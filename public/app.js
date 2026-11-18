@@ -501,6 +501,31 @@ document.querySelectorAll('.seg-tab').forEach((tab) => {
   });
 });
 
+// Login: Google SSO via Beeper Matrix
+document.getElementById('btn-google-login').addEventListener('click', async () => {
+  const errBox = document.getElementById('auth-error-beeper');
+  errBox.classList.add('hidden');
+  try {
+    const resp = await fetch('/api/auth/sso-url');
+    const data = await resp.json();
+    if (!resp.ok || !data.ssoUrl) throw new Error(data.error || 'SSO-URL konnte nicht geladen werden');
+    window.location.href = data.ssoUrl;
+  } catch (err) {
+    errBox.textContent = err.message;
+    errBox.classList.remove('hidden');
+  }
+});
+
+// Show SSO error if redirected back with error
+(() => {
+  const params = new URLSearchParams(window.location.search);
+  const ssoError = params.get('sso_error');
+  if (ssoError) {
+    showToast(`Google-Anmeldung: ${ssoError}`);
+    window.history.replaceState({}, '', '/');
+  }
+})();
+
 // Login: Beeper Account (matrix.beeper.com)
 document.getElementById('form-auth-beeper').addEventListener('submit', async (e) => {
   e.preventDefault();
