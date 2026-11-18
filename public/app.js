@@ -76,7 +76,7 @@ const state = {
   apiUrl: localStorage.getItem('beeper_url') || 'http://localhost:23373',
   token: localStorage.getItem('beeper_token') || '',
   theme: localStorage.getItem('beeper_theme') || 'light',
-  seed: localStorage.getItem('beeper_seed') || 'ocean',
+  seed: localStorage.getItem('beeper_seed') || 'lavender',
   filter: 'all',
   accountFilter: null,
   searchQuery: '',

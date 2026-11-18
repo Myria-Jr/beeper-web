@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="de" data-theme="light" data-seed="ocean">
+<html lang="de" data-theme="light" data-seed="lavender">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
@@ -24,7 +24,7 @@
           <div class="brand-badge">B</div>
           <div class="brand-text">
             <span class="brand-title">Beeper</span>
-            <span class="brand-sub">Material You</span>
+            <span class="brand-sub">M3 Expressive</span>
           </div>
         </div>
         <button id="btn-close-sidebar" class="m3-icon-btn mobile-only" aria-label="Menü schließen">✕</button>
@@ -75,10 +75,10 @@
           </button>
         </div>
         <div class="seed-row" role="group" aria-label="Material You Farbpalette">
-          <button class="seed-dot active" data-seed="ocean" style="--dot:#0B57D0" title="Ozeanblau"></button>
+          <button class="seed-dot active" data-seed="lavender" style="--dot:#6750A4" title="Expressive Lavender"></button>
+          <button class="seed-dot" data-seed="sky" style="--dot:#0099E5" title="Expressive Sky"></button>
           <button class="seed-dot" data-seed="sage" style="--dot:#2E6B4E" title="Salbeigrün"></button>
           <button class="seed-dot" data-seed="terracotta" style="--dot:#9C4130" title="Terracotta"></button>
-          <button class="seed-dot" data-seed="berry" style="--dot:#8E2463" title="Beere"></button>
           <button class="seed-dot" data-seed="amber" style="--dot:#825500" title="Bernstein"></button>
         </div>
       </div>
@@ -133,8 +133,8 @@
             </div>
           </div>
 
-          <div class="stage-actions">
-            <button id="btn-mark-unread" class="m3-tonal-chip" title="Als ungelesen markieren">Ungelesen</button>
+          <div class="m3-floating-toolbar">
+            <button id="btn-mark-unread" class="m3-icon-btn" title="Als ungelesen markieren" aria-label="Ungelesen">✨</button>
             <button id="btn-archive-chat" class="m3-icon-btn" title="Archivieren" aria-label="Archivieren">📦</button>
             <button id="btn-toggle-inspector" class="m3-icon-btn" title="Details" aria-label="Details">ℹ</button>
           </div>
@@ -151,8 +151,10 @@
             <button id="btn-cancel-reply" class="m3-icon-btn" aria-label="Abbrechen">✕</button>
           </div>
 
-          <form id="composer-form" class="m3-composer">
-            <textarea id="composer-input" rows="1" placeholder="Nachricht schreiben…" aria-label="Nachricht"></textarea>
+          <form id="composer-form" class="m3-composer-row">
+            <div class="m3-composer">
+              <textarea id="composer-input" rows="1" placeholder="Nachricht schreiben…" aria-label="Nachricht"></textarea>
+            </div>
             <button id="btn-send" type="submit" class="m3-fab-send" disabled aria-label="Senden">↑</button>
           </form>
         </footer>
