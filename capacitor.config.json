@@ -1,0 +1,13 @@
+{
+  "appId": "com.beeperweb.ipad",
+  "appName": "Beeper Web",
+  "webDir": "public",
+  "server": {
+    "androidScheme": "https",
+    "iosScheme": "capacitor",
+    "allowNavigation": ["*"]
+  },
+  "ios": {
+    "contentInset": "automatic"
+  }
+}

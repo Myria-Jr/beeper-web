@@ -1,0 +1,63 @@
+name: Build iPadOS IPA (Beta v1.0)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-ipa:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies and Capacitor iOS
+        run: |
+          npm install
+          npm install --no-save @capacitor/core @capacitor/cli @capacitor/ios
+
+      - name: Generate and sync iOS Xcode project
+        run: |
+          npx cap add ios
+          npx cap sync ios
+
+      - name: Configure iPadOS Info.plist permissions
+        run: |
+          PLIST="ios/App/App/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName 'Beeper Web'" "$PLIST" || true
+          /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity dict" "$PLIST" || true
+          /usr/libexec/PlistBuddy -c "Set :NSAppTransportSecurity:NSAllowsArbitraryLoads true" "$PLIST" || \
+            /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity:NSAllowsArbitraryLoads bool true" "$PLIST"
+
+      - name: Build unsigned iOS app with xcodebuild
+        run: |
+          xcodebuild \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -sdk iphoneos \
+            -configuration Release \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build \
+            SYMROOT="$PWD/build"
+
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          cp -r build/Release-iphoneos/App.app Payload/BeeperWeb.app
+          zip -r BeeperWeb-Beta-v1.0.ipa Payload
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BeeperWeb-Beta-v1.0-ipa
+          path: BeeperWeb-Beta-v1.0.ipa
+          retention-days: 30

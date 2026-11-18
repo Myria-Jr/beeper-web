@@ -69,9 +69,12 @@ const savedUser = (() => {
   }
 })();
 
+const isNativeApp = ['capacitor:', 'file:'].includes(window.location.protocol);
+
 const state = {
   user: savedUser,
   authMode: localStorage.getItem('beeper_auth_mode') || 'desktop',
+  serverUrl: localStorage.getItem('beeper_server_url') || (isNativeApp ? 'http://localhost:3000' : ''),
   apiUrl: localStorage.getItem('beeper_url') || 'http://localhost:23373',
   token: localStorage.getItem('beeper_token') || '',
   theme: localStorage.getItem('beeper_theme') || 'light',
@@ -177,8 +180,13 @@ function buildHeaders(extra = {}) {
   return headers;
 }
 
+function resolveApiPath(path) {
+  const base = (state.serverUrl || '').trim().replace(/\/+$/, '');
+  return base ? `${base}${path}` : path;
+}
+
 async function apiFetch(path, options = {}) {
-  const res = await fetch(path, {
+  const res = await fetch(resolveApiPath(path), {
     ...options,
     headers: buildHeaders(options.headers || {}),
   });
@@ -522,6 +530,9 @@ function closeSidebar() {
 }
 
 function openAuthModal() {
+  const srvGroup = document.getElementById('server-url-group');
+  if (isNativeApp) srvGroup.classList.remove('hidden');
+  document.getElementById('server-url').value = state.serverUrl;
   document.getElementById('desktop-url').value = state.apiUrl;
   document.getElementById('desktop-token').value = state.token;
   document.getElementById('auth-error-beeper').classList.add('hidden');
@@ -545,10 +556,14 @@ document.getElementById('form-auth-desktop').addEventListener('submit', async (e
   e.preventDefault();
   const errBox = document.getElementById('auth-error-desktop');
   errBox.classList.add('hidden');
+  if (isNativeApp) {
+    state.serverUrl = document.getElementById('server-url').value.trim();
+    localStorage.setItem('beeper_server_url', state.serverUrl);
+  }
   const apiUrl = document.getElementById('desktop-url').value.trim();
   const token = document.getElementById('desktop-token').value.trim();
   try {
-    const resp = await fetch('/api/auth/login', {
+    const resp = await fetch(resolveApiPath('/api/auth/login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ mode: 'desktop', apiUrl, token }),
@@ -581,7 +596,7 @@ document.getElementById('form-auth-beeper').addEventListener('submit', async (e)
   const identifier = document.getElementById('beeper-ident').value.trim();
   const password = document.getElementById('beeper-pass').value;
   try {
-    const resp = await fetch('/api/auth/login', {
+    const resp = await fetch(resolveApiPath('/api/auth/login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ mode: 'beeper', identifier, password }),

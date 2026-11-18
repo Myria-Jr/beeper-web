@@ -219,6 +219,10 @@
 
       <!-- Tab 1: Beeper Desktop API -->
       <form id="form-auth-desktop" class="modal-body">
+        <div id="server-url-group" class="m3-field hidden">
+          <label for="server-url">Web-Server / Vercel URL (für iPad-App)</label>
+          <input id="server-url" type="url" placeholder="https://deine-app.vercel.app" />
+        </div>
         <div class="m3-field">
           <label for="desktop-url">Beeper Desktop API URL</label>
           <input id="desktop-url" type="url" value="http://localhost:23373" placeholder="http://localhost:23373" required />
