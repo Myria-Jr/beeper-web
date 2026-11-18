@@ -226,7 +226,6 @@ app.get('/api/auth/sso-url', async (req, res) => {
   const host = req.headers['x-forwarded-host'] || req.get('host');
   const callbackUrl = `${proto}://${host}/api/auth/sso-callback`;
 
-  let ssoPath = '/_matrix/client/v3/login/sso/redirect';
   try {
     const flowsResp = await fetch('https://matrix.beeper.com/_matrix/client/v3/login', {
       signal: AbortSignal.timeout(5000),
@@ -234,19 +233,32 @@ app.get('/api/auth/sso-url', async (req, res) => {
     if (flowsResp.ok) {
       const flowsData = await flowsResp.json();
       const ssoFlow = (flowsData.flows || []).find((f) => f.type === 'm.login.sso');
-      const googleIdp = (ssoFlow?.identity_providers || []).find(
+      if (!ssoFlow) {
+        return res.status(400).json({
+          ok: false,
+          supported: false,
+          error:
+            'Beeper (matrix.beeper.com) bietet kein öffentliches Google-SSO für Drittanbieter-Web-Apps. Wenn du dich bei Beeper mit Google anmeldest, öffne Beeper Desktop → Einstellungen → Developers, erstelle dort einen Access Token und verbinde ihn im Tab „Desktop API“.',
+        });
+      }
+      const googleIdp = (ssoFlow.identity_providers || []).find(
         (p) => /google/i.test(p.id || '') || /google/i.test(p.name || '')
       );
-      if (googleIdp?.id) {
-        ssoPath = `/_matrix/client/v3/login/sso/redirect/${encodeURIComponent(googleIdp.id)}`;
-      }
+      const ssoPath = googleIdp?.id
+        ? `/_matrix/client/v3/login/sso/redirect/${encodeURIComponent(googleIdp.id)}`
+        : '/_matrix/client/v3/login/sso/redirect';
+      const ssoUrl = `https://matrix.beeper.com${ssoPath}?redirectUrl=${encodeURIComponent(callbackUrl)}`;
+      return res.json({ ok: true, supported: true, ssoUrl, callbackUrl });
     }
-  } catch {
-    // Fallback to standard Matrix SSO redirect
+  } catch (err) {
+    return res.status(502).json({ ok: false, error: `Beeper Login-Server nicht erreichbar: ${err.message}` });
   }
 
-  const ssoUrl = `https://matrix.beeper.com${ssoPath}?redirectUrl=${encodeURIComponent(callbackUrl)}`;
-  res.json({ ok: true, ssoUrl, callbackUrl });
+  return res.status(400).json({
+    ok: false,
+    supported: false,
+    error: 'Google-SSO wird von matrix.beeper.com nicht unterstützt. Bitte nutze deinen Beeper Desktop Access Token im Tab „Desktop API“.',
+  });
 });
 
 // Exchange Matrix SSO loginToken for access_token and store in browser localStorage
