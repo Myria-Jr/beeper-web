@@ -26,7 +26,9 @@ jobs:
       - name: Generate and sync iOS Xcode project
         run: |
           npx cap add ios
-          sed -i '' "s/platform :ios, '.*'/platform :ios, '15.0'/" ios/App/Podfile
+          if [ -f ios/App/Podfile ]; then
+            sed -i '' "s/platform :ios, '.*'/platform :ios, '15.0'/" ios/App/Podfile
+          fi
           npx cap sync ios
 
       - name: Configure iPadOS Info.plist permissions
@@ -39,8 +41,13 @@ jobs:
 
       - name: Build unsigned iOS app with xcodebuild
         run: |
+          if [ -d ios/App/App.xcworkspace ]; then
+            TARGET_FLAG="-workspace ios/App/App.xcworkspace"
+          else
+            TARGET_FLAG="-project ios/App/App.xcodeproj"
+          fi
           xcodebuild \
-            -workspace ios/App/App.xcworkspace \
+            $TARGET_FLAG \
             -scheme App \
             -sdk iphoneos \
             -configuration Release \
