@@ -129,6 +129,96 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
+// Beeper Account Login (Desktop API Token, Beeper Matrix Account, or Demo)
+app.post('/api/auth/login', async (req, res) => {
+  const { mode = 'desktop', apiUrl, token, identifier, password } = req.body || {};
+
+  if (mode === 'demo') {
+    return res.json({
+      ok: true,
+      mode: 'demo',
+      user: {
+        id: '@alexmercer:beeper.com',
+        fullName: 'Alex Mercer',
+        username: '@alexmercer',
+        networkCount: demoState.accounts.length,
+      },
+    });
+  }
+
+  if (mode === 'beeper') {
+    if (!identifier || !password) {
+      return res.status(400).json({ error: 'Bitte Beeper-Handle/E-Mail und Passwort eingeben.' });
+    }
+    try {
+      const userIdent = String(identifier).trim();
+      const loginPayload = {
+        type: 'm.login.password',
+        identifier: userIdent.includes('@') && !userIdent.startsWith('@')
+          ? { type: 'm.id.thirdparty', medium: 'email', address: userIdent }
+          : { type: 'm.id.user', user: userIdent },
+        password: String(password),
+        initial_device_display_name: 'Beeper Web (iPad)',
+      };
+      const resp = await fetch('https://matrix.beeper.com/_matrix/client/v3/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(loginPayload),
+        signal: AbortSignal.timeout(10000),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        return res.status(resp.status).json({
+          error: data.error || 'Anmeldung bei Beeper fehlgeschlagen',
+          errcode: data.errcode,
+        });
+      }
+      return res.json({
+        ok: true,
+        mode: 'beeper',
+        accessToken: data.access_token,
+        user: {
+          id: data.user_id,
+          fullName: userIdent.replace(/^@/, '').split(':')[0],
+          username: data.user_id,
+          deviceId: data.device_id,
+        },
+      });
+    } catch (err) {
+      return res.status(502).json({ error: `Beeper Login nicht erreichbar: ${err.message}` });
+    }
+  }
+
+  // Default: Beeper Desktop API verification
+  const targetUrl = String(apiUrl || process.env.BEEPER_API_URL || 'http://localhost:23373').trim().replace(/\/+$/, '');
+  const targetToken = String(token || process.env.BEEPER_ACCESS_TOKEN || '').trim();
+  try {
+    const result = await beeperFetch({ baseUrl: targetUrl, token: targetToken }, '/v1/accounts', { timeoutMs: 5000 });
+    if (!result.ok) {
+      return res.status(result.status).json({ error: result.data?.message || `HTTP ${result.status}` });
+    }
+    const items = Array.isArray(result.data) ? result.data : result.data?.items || [];
+    const primaryUser = items.find((a) => a.user)?.user || {};
+    return res.json({
+      ok: true,
+      mode: 'live',
+      apiUrl: targetUrl,
+      user: {
+        id: primaryUser.id || 'beeper-desktop',
+        fullName: primaryUser.fullName || 'Beeper User',
+        username: primaryUser.username || `${items.length} Netzwerke`,
+        networkCount: items.length,
+      },
+    });
+  } catch (err) {
+    return res.status(502).json({
+      error: err?.cause?.code === 'ECONNREFUSED'
+        ? 'Beeper Desktop API nicht erreichbar (läuft Beeper Desktop auf Port 23373?)'
+        : err.message,
+    });
+  }
+});
+
 // List connected accounts
 app.get('/api/accounts', async (req, res) => {
   const config = getBeeperConfig(req);
