@@ -6,6 +6,9 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-ipa:
     runs-on: macos-latest
@@ -70,3 +73,12 @@ jobs:
           name: BeeperWeb-Beta-v1.0-ipa
           path: BeeperWeb-Beta-v1.0.ipa
           retention-days: 30
+
+      - name: Publish public GitHub Release with direct IPA download
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete v1.0.0-beta.1 --yes --cleanup-tag || true
+          gh release create v1.0.0-beta.1 BeeperWeb-Beta-v1.0.ipa \
+            --title "Beeper Web Beta v1.0" \
+            --notes "Direkter IPA-Download für iPadOS (Material 3 Expressive UI)."
