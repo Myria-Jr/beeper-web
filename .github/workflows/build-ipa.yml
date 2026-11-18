@@ -16,7 +16,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Install dependencies and Capacitor iOS
         run: |
@@ -26,6 +26,7 @@ jobs:
       - name: Generate and sync iOS Xcode project
         run: |
           npx cap add ios
+          sed -i '' "s/platform :ios, '.*'/platform :ios, '15.0'/" ios/App/Podfile
           npx cap sync ios
 
       - name: Configure iPadOS Info.plist permissions
@@ -39,10 +40,11 @@ jobs:
       - name: Build unsigned iOS app with xcodebuild
         run: |
           xcodebuild \
-            -project ios/App/App.xcodeproj \
+            -workspace ios/App/App.xcworkspace \
             -scheme App \
             -sdk iphoneos \
             -configuration Release \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
