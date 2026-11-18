@@ -169,6 +169,10 @@ function buildHeaders(extra = {}) {
   if (state.apiUrl) headers['x-beeper-url'] = state.apiUrl;
   if (state.token) headers['x-beeper-token'] = state.token;
   if (state.demo) headers['x-beeper-demo'] = '1';
+  if (!state.demo && state.authMode === 'matrix') {
+    headers['x-beeper-mode'] = 'matrix';
+    if (state.user?.id) headers['x-beeper-userid'] = state.user.id;
+  }
   return headers;
 }
 
@@ -513,9 +517,11 @@ document.getElementById('form-auth-beeper').addEventListener('submit', async (e)
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error || 'Anmeldung fehlgeschlagen');
     state.user = data.user;
+    state.authMode = 'matrix';
     state.demo = false;
     state.token = data.accessToken || '';
     localStorage.setItem('beeper_user', JSON.stringify(state.user));
+    localStorage.setItem('beeper_auth_mode', 'matrix');
     localStorage.setItem('beeper_demo', '0');
     localStorage.setItem('beeper_token', state.token);
     updateAccountUI();
@@ -544,10 +550,12 @@ document.getElementById('form-auth-desktop').addEventListener('submit', async (e
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error || 'Verbindung fehlgeschlagen');
     state.user = data.user;
+    state.authMode = 'desktop';
     state.demo = false;
     state.apiUrl = apiUrl;
     state.token = token;
     localStorage.setItem('beeper_user', JSON.stringify(state.user));
+    localStorage.setItem('beeper_auth_mode', 'desktop');
     localStorage.setItem('beeper_demo', '0');
     localStorage.setItem('beeper_url', apiUrl);
     localStorage.setItem('beeper_token', token);
@@ -569,8 +577,10 @@ document.getElementById('btn-demo-signin').addEventListener('click', async () =>
     body: JSON.stringify({ mode: 'demo' }),
   }).then((r) => r.json());
   state.user = data.user;
+  state.authMode = 'demo';
   state.demo = true;
   localStorage.setItem('beeper_user', JSON.stringify(state.user));
+  localStorage.setItem('beeper_auth_mode', 'demo');
   localStorage.setItem('beeper_demo', '1');
   updateAccountUI();
   els.authModal.classList.add('hidden');

@@ -24,6 +24,7 @@ function getBeeperConfig(req) {
   const forceDemo =
     req.query.demo === '1' ||
     req.headers['x-beeper-demo'] === '1';
+  const matrixMode = req.headers['x-beeper-mode'] === 'matrix';
 
   let baseUrl = String(rawUrl).trim().replace(/\/+$/, '');
   try {
@@ -35,7 +36,7 @@ function getBeeperConfig(req) {
     baseUrl = 'http://localhost:23373';
   }
 
-  return { baseUrl, token: String(token).trim(), forceDemo };
+  return { baseUrl, token: String(token).trim(), forceDemo, matrixMode };
 }
 
 async function beeperFetch(config, apiPath, options = {}) {
@@ -219,11 +220,31 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+async function matrixFetch(token, apiPath, options = {}) {
+  const resp = await fetch(`https://matrix.beeper.com${apiPath}`, {
+    method: options.method || 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${token}`,
+      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+    },
+    body: options.body ? JSON.stringify(options.body) : undefined,
+    signal: AbortSignal.timeout(10000),
+  });
+  const data = await resp.json().catch(() => ({}));
+  return { ok: resp.ok, status: resp.status, data };
+}
+
 // List connected accounts
 app.get('/api/accounts', async (req, res) => {
   const config = getBeeperConfig(req);
   if (config.forceDemo) {
     return res.json({ items: demoState.accounts });
+  }
+  if (config.matrixMode) {
+    return res.json({
+      items: [{ accountID: 'matrix.beeper.com', network: 'Beeper Matrix', statusText: 'Connected' }],
+    });
   }
 
   try {
@@ -240,6 +261,44 @@ app.get('/api/accounts', async (req, res) => {
 app.get('/api/chats', async (req, res) => {
   const config = getBeeperConfig(req);
   const { q, accountIDs, unreadOnly, cursor, limit, archived } = req.query;
+
+  if (config.matrixMode) {
+    try {
+      const sync = await matrixFetch(config.token, '/_matrix/client/v3/sync?timeout=0');
+      if (!sync.ok) return res.status(sync.status).json(sync.data);
+      const joined = sync.data?.rooms?.join || {};
+      let chats = Object.entries(joined).map(([roomId, room]) => {
+        const stateEvents = room.state?.events || [];
+        const timeline = room.timeline?.events || [];
+        const nameEv = [...stateEvents, ...timeline].find((e) => e.type === 'm.room.name');
+        const msgEv = [...timeline].reverse().find((e) => e.type === 'm.room.message' || e.type === 'm.room.encrypted');
+        const previewText =
+          msgEv?.type === 'm.room.encrypted'
+            ? '🔒 Verschlüsselte Nachricht (Beeper Desktop API für Klartext)'
+            : msgEv?.content?.body || 'Keine Nachrichten';
+        const ts = msgEv?.origin_server_ts ? new Date(msgEv.origin_server_ts).toISOString() : new Date().toISOString();
+        return {
+          id: roomId,
+          accountID: 'matrix.beeper.com',
+          network: 'Beeper Matrix',
+          title: nameEv?.content?.name || roomId,
+          type: 'group',
+          unreadCount: room.unread_notifications?.notification_count || 0,
+          isArchived: false,
+          lastActivity: ts,
+          preview: { text: previewText, timestamp: ts },
+        };
+      });
+      if (q) {
+        const query = String(q).toLowerCase();
+        chats = chats.filter((c) => c.title.toLowerCase().includes(query));
+      }
+      chats.sort((a, b) => new Date(b.lastActivity) - new Date(a.lastActivity));
+      return res.json({ items: chats, hasMore: false });
+    } catch (err) {
+      return handleProxyError(res, err);
+    }
+  }
 
   if (config.forceDemo) {
     let chats = [...demoState.chats];
@@ -323,6 +382,34 @@ app.get('/api/chats/:chatId/messages', async (req, res) => {
   const config = getBeeperConfig(req);
   const { chatId } = req.params;
 
+  if (config.matrixMode) {
+    try {
+      const selfId = req.headers['x-beeper-userid'] || '';
+      const result = await matrixFetch(
+        config.token,
+        `/_matrix/client/v3/rooms/${encodeURIComponent(chatId)}/messages?dir=b&limit=50`
+      );
+      if (!result.ok) return res.status(result.status).json(result.data);
+      const chunk = (result.data?.chunk || [])
+        .filter((e) => e.type === 'm.room.message' || e.type === 'm.room.encrypted')
+        .map((e) => ({
+          id: e.event_id,
+          chatID: chatId,
+          senderID: e.sender,
+          senderName: e.sender.replace(/^@/, '').split(':')[0],
+          isSender: selfId ? e.sender === selfId : false,
+          text:
+            e.type === 'm.room.encrypted'
+              ? '🔒 Verschlüsselte Nachricht (E2EE — für Klartext Beeper Desktop API + Tunnel nutzen)'
+              : e.content?.body || '[Nachricht]',
+          timestamp: new Date(e.origin_server_ts).toISOString(),
+        }));
+      return res.json({ items: chunk.reverse(), hasMore: false });
+    } catch (err) {
+      return handleProxyError(res, err);
+    }
+  }
+
   if (config.forceDemo) {
     const items = demoState.messagesByChat[chatId] || [];
     return res.json({ items, hasMore: false });
@@ -349,6 +436,20 @@ app.post('/api/chats/:chatId/messages', async (req, res) => {
 
   if (!text || !String(text).trim()) {
     return res.status(400).json({ error: 'Message text is required' });
+  }
+
+  if (config.matrixMode) {
+    try {
+      const txnId = `m${Date.now()}`;
+      const result = await matrixFetch(
+        config.token,
+        `/_matrix/client/v3/rooms/${encodeURIComponent(chatId)}/send/m.room.message/${txnId}`,
+        { method: 'PUT', body: { msgtype: 'm.text', body: String(text).trim() } }
+      );
+      return res.status(result.status).json(result.data);
+    } catch (err) {
+      return handleProxyError(res, err);
+    }
   }
 
   if (config.forceDemo) {
