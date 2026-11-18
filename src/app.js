@@ -1,15 +1,12 @@
 const path = require('path');
 const express = require('express');
 const cors = require('cors');
-const { createInitialState } = require('./mockData');
 
 const app = express();
-const demoState = createInitialState();
+const APP_VERSION = '1.0.0-beta.1';
 
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
-
-// Serve static frontend files (used in local Node/Express mode; Vercel serves public/ directly too)
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 function getBeeperConfig(req) {
@@ -21,9 +18,6 @@ function getBeeperConfig(req) {
     req.headers['x-beeper-token'] ||
     process.env.BEEPER_ACCESS_TOKEN ||
     '';
-  const forceDemo =
-    req.query.demo === '1' ||
-    req.headers['x-beeper-demo'] === '1';
   const matrixMode = req.headers['x-beeper-mode'] === 'matrix';
 
   let baseUrl = String(rawUrl).trim().replace(/\/+$/, '');
@@ -36,7 +30,7 @@ function getBeeperConfig(req) {
     baseUrl = 'http://localhost:23373';
   }
 
-  return { baseUrl, token: String(token).trim(), forceDemo, matrixMode };
+  return { baseUrl, token: String(token).trim(), matrixMode };
 }
 
 async function beeperFetch(config, apiPath, options = {}) {
@@ -55,11 +49,9 @@ async function beeperFetch(config, apiPath, options = {}) {
     signal: AbortSignal.timeout(options.timeoutMs || 8000),
   });
 
-  const contentType = response.headers.get('content-type') || '';
-  if (options.raw) {
-    return response;
-  }
+  if (options.raw) return response;
 
+  const contentType = response.headers.get('content-type') || '';
   let data = null;
   if (contentType.includes('application/json')) {
     data = await response.json();
@@ -70,242 +62,6 @@ async function beeperFetch(config, apiPath, options = {}) {
 
   return { ok: response.ok, status: response.status, data };
 }
-
-function handleProxyError(res, err) {
-  const message =
-    err?.name === 'TimeoutError'
-      ? 'Beeper Desktop API timed out (is Beeper Desktop running?)'
-      : err?.cause?.code === 'ECONNREFUSED'
-      ? 'Cannot connect to Beeper Desktop API (ECONNREFUSED)'
-      : err?.message || 'Unknown proxy error';
-
-  res.status(502).json({
-    error: message,
-    hint: 'Enable Beeper Desktop API in Beeper -> Settings -> Developers, or switch to Demo Mode.',
-  });
-}
-
-// Health / Connection check
-app.get('/api/health', async (req, res) => {
-  const config = getBeeperConfig(req);
-  if (config.forceDemo) {
-    return res.json({
-      ok: true,
-      connected: true,
-      mode: 'demo',
-      apiUrl: config.baseUrl,
-      accountCount: demoState.accounts.length,
-    });
-  }
-
-  try {
-    const result = await beeperFetch(config, '/v1/accounts', { timeoutMs: 3000 });
-    if (!result.ok) {
-      return res.json({
-        ok: false,
-        connected: false,
-        mode: 'live',
-        apiUrl: config.baseUrl,
-        status: result.status,
-        error: result.data?.message || `HTTP ${result.status}`,
-      });
-    }
-
-    const items = Array.isArray(result.data) ? result.data : result.data?.items || [];
-    return res.json({
-      ok: true,
-      connected: true,
-      mode: 'live',
-      apiUrl: config.baseUrl,
-      accountCount: items.length,
-    });
-  } catch (err) {
-    return res.json({
-      ok: false,
-      connected: false,
-      mode: 'offline',
-      apiUrl: config.baseUrl,
-      error: err?.cause?.code === 'ECONNREFUSED' ? 'Beeper Desktop API unreachable' : err.message,
-    });
-  }
-});
-
-// Beeper Account Login (Desktop API Token, Beeper Matrix Account, or Demo)
-app.post('/api/auth/login', async (req, res) => {
-  const { mode = 'desktop', apiUrl, token, identifier, password } = req.body || {};
-
-  if (mode === 'demo') {
-    return res.json({
-      ok: true,
-      mode: 'demo',
-      user: {
-        id: '@alexmercer:beeper.com',
-        fullName: 'Alex Mercer',
-        username: '@alexmercer',
-        networkCount: demoState.accounts.length,
-      },
-    });
-  }
-
-  if (mode === 'beeper') {
-    if (!identifier || !password) {
-      return res.status(400).json({ error: 'Bitte Beeper-Handle/E-Mail und Passwort eingeben.' });
-    }
-    try {
-      const userIdent = String(identifier).trim();
-      const loginPayload = {
-        type: 'm.login.password',
-        identifier: userIdent.includes('@') && !userIdent.startsWith('@')
-          ? { type: 'm.id.thirdparty', medium: 'email', address: userIdent }
-          : { type: 'm.id.user', user: userIdent },
-        password: String(password),
-        initial_device_display_name: 'Beeper Web (iPad)',
-      };
-      const resp = await fetch('https://matrix.beeper.com/_matrix/client/v3/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(loginPayload),
-        signal: AbortSignal.timeout(10000),
-      });
-      const data = await resp.json().catch(() => ({}));
-      if (!resp.ok) {
-        return res.status(resp.status).json({
-          error: data.error || 'Anmeldung bei Beeper fehlgeschlagen',
-          errcode: data.errcode,
-        });
-      }
-      return res.json({
-        ok: true,
-        mode: 'beeper',
-        accessToken: data.access_token,
-        user: {
-          id: data.user_id,
-          fullName: userIdent.replace(/^@/, '').split(':')[0],
-          username: data.user_id,
-          deviceId: data.device_id,
-        },
-      });
-    } catch (err) {
-      return res.status(502).json({ error: `Beeper Login nicht erreichbar: ${err.message}` });
-    }
-  }
-
-  // Default: Beeper Desktop API verification
-  const targetUrl = String(apiUrl || process.env.BEEPER_API_URL || 'http://localhost:23373').trim().replace(/\/+$/, '');
-  const targetToken = String(token || process.env.BEEPER_ACCESS_TOKEN || '').trim();
-  try {
-    const result = await beeperFetch({ baseUrl: targetUrl, token: targetToken }, '/v1/accounts', { timeoutMs: 5000 });
-    if (!result.ok) {
-      return res.status(result.status).json({ error: result.data?.message || `HTTP ${result.status}` });
-    }
-    const items = Array.isArray(result.data) ? result.data : result.data?.items || [];
-    const primaryUser = items.find((a) => a.user)?.user || {};
-    return res.json({
-      ok: true,
-      mode: 'live',
-      apiUrl: targetUrl,
-      user: {
-        id: primaryUser.id || 'beeper-desktop',
-        fullName: primaryUser.fullName || 'Beeper User',
-        username: primaryUser.username || `${items.length} Netzwerke`,
-        networkCount: items.length,
-      },
-    });
-  } catch (err) {
-    return res.status(502).json({
-      error: err?.cause?.code === 'ECONNREFUSED'
-        ? 'Beeper Desktop API nicht erreichbar (läuft Beeper Desktop auf Port 23373?)'
-        : err.message,
-    });
-  }
-});
-
-// Google / Matrix SSO Redirect URL discovery for Beeper
-app.get('/api/auth/sso-url', async (req, res) => {
-  const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
-  const host = req.headers['x-forwarded-host'] || req.get('host');
-  const callbackUrl = `${proto}://${host}/api/auth/sso-callback`;
-
-  try {
-    const flowsResp = await fetch('https://matrix.beeper.com/_matrix/client/v3/login', {
-      signal: AbortSignal.timeout(5000),
-    });
-    if (flowsResp.ok) {
-      const flowsData = await flowsResp.json();
-      const ssoFlow = (flowsData.flows || []).find((f) => f.type === 'm.login.sso');
-      if (!ssoFlow) {
-        return res.status(400).json({
-          ok: false,
-          supported: false,
-          error:
-            'Beeper (matrix.beeper.com) bietet kein öffentliches Google-SSO für Drittanbieter-Web-Apps. Wenn du dich bei Beeper mit Google anmeldest, öffne Beeper Desktop → Einstellungen → Developers, erstelle dort einen Access Token und verbinde ihn im Tab „Desktop API“.',
-        });
-      }
-      const googleIdp = (ssoFlow.identity_providers || []).find(
-        (p) => /google/i.test(p.id || '') || /google/i.test(p.name || '')
-      );
-      const ssoPath = googleIdp?.id
-        ? `/_matrix/client/v3/login/sso/redirect/${encodeURIComponent(googleIdp.id)}`
-        : '/_matrix/client/v3/login/sso/redirect';
-      const ssoUrl = `https://matrix.beeper.com${ssoPath}?redirectUrl=${encodeURIComponent(callbackUrl)}`;
-      return res.json({ ok: true, supported: true, ssoUrl, callbackUrl });
-    }
-  } catch (err) {
-    return res.status(502).json({ ok: false, error: `Beeper Login-Server nicht erreichbar: ${err.message}` });
-  }
-
-  return res.status(400).json({
-    ok: false,
-    supported: false,
-    error: 'Google-SSO wird von matrix.beeper.com nicht unterstützt. Bitte nutze deinen Beeper Desktop Access Token im Tab „Desktop API“.',
-  });
-});
-
-// Exchange Matrix SSO loginToken for access_token and store in browser localStorage
-app.get('/api/auth/sso-callback', async (req, res) => {
-  const loginToken = req.query.loginToken;
-  if (!loginToken) {
-    return res.redirect('/?sso_error=' + encodeURIComponent('Kein loginToken von Beeper erhalten.'));
-  }
-
-  try {
-    const resp = await fetch('https://matrix.beeper.com/_matrix/client/v3/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        type: 'm.login.token',
-        token: String(loginToken),
-        initial_device_display_name: 'Beeper Web (iPad)',
-      }),
-      signal: AbortSignal.timeout(10000),
-    });
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok || !data.access_token) {
-      const msg = data.error || 'Google/Beeper SSO-Anmeldung fehlgeschlagen';
-      return res.redirect('/?sso_error=' + encodeURIComponent(msg));
-    }
-
-    const userObj = {
-      id: data.user_id,
-      fullName: String(data.user_id || 'Beeper User').replace(/^@/, '').split(':')[0],
-      username: data.user_id,
-      deviceId: data.device_id,
-    };
-
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    return res.send(`<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>Anmeldung…</title></head>
-<body><script>
-  localStorage.setItem('beeper_user', ${JSON.stringify(JSON.stringify(userObj))});
-  localStorage.setItem('beeper_auth_mode', 'matrix');
-  localStorage.setItem('beeper_demo', '0');
-  localStorage.setItem('beeper_token', ${JSON.stringify(data.access_token)});
-  window.location.replace('/');
-</script></body></html>`);
-  } catch (err) {
-    return res.redirect('/?sso_error=' + encodeURIComponent(err.message || 'SSO Fehler'));
-  }
-});
 
 async function matrixFetch(token, apiPath, options = {}) {
   const resp = await fetch(`https://matrix.beeper.com${apiPath}`, {
@@ -322,12 +78,159 @@ async function matrixFetch(token, apiPath, options = {}) {
   return { ok: resp.ok, status: resp.status, data };
 }
 
+function handleProxyError(res, err) {
+  const message =
+    err?.name === 'TimeoutError'
+      ? 'Beeper API Zeitüberschreitung (läuft Beeper Desktop / Tunnel?)'
+      : err?.cause?.code === 'ECONNREFUSED'
+      ? 'Verbindung zur Beeper Desktop API abgelehnt (Port 23373 nicht erreichbar)'
+      : err?.message || 'Unbekannter Proxy-Fehler';
+
+  res.status(502).json({
+    error: message,
+    hint: 'Aktiviere die Beeper Desktop API unter Einstellungen → Developers oder melde dich mit deinem Beeper-Konto an.',
+  });
+}
+
+// Health / Connection check
+app.get('/api/health', async (req, res) => {
+  const config = getBeeperConfig(req);
+
+  if (config.matrixMode && config.token) {
+    try {
+      const who = await matrixFetch(config.token, '/_matrix/client/v3/account/whoami');
+      if (who.ok) {
+        return res.json({
+          ok: true,
+          connected: true,
+          mode: 'matrix',
+          version: APP_VERSION,
+          userId: who.data?.user_id,
+        });
+      }
+      return res.json({ ok: false, connected: false, mode: 'matrix', version: APP_VERSION, error: who.data?.error });
+    } catch (err) {
+      return res.json({ ok: false, connected: false, mode: 'matrix', version: APP_VERSION, error: err.message });
+    }
+  }
+
+  try {
+    const result = await beeperFetch(config, '/v1/accounts', { timeoutMs: 3500 });
+    if (!result.ok) {
+      return res.json({
+        ok: false,
+        connected: false,
+        mode: 'desktop',
+        version: APP_VERSION,
+        apiUrl: config.baseUrl,
+        status: result.status,
+        error: result.data?.message || `HTTP ${result.status}`,
+      });
+    }
+
+    const items = Array.isArray(result.data) ? result.data : result.data?.items || [];
+    return res.json({
+      ok: true,
+      connected: true,
+      mode: 'desktop',
+      version: APP_VERSION,
+      apiUrl: config.baseUrl,
+      accountCount: items.length,
+    });
+  } catch (err) {
+    return res.json({
+      ok: false,
+      connected: false,
+      mode: 'offline',
+      version: APP_VERSION,
+      apiUrl: config.baseUrl,
+      error: err?.cause?.code === 'ECONNREFUSED' ? 'Beeper Desktop API nicht erreichbar' : err.message,
+    });
+  }
+});
+
+// Beeper Account Login (Desktop API Token or Beeper Matrix Account)
+app.post('/api/auth/login', async (req, res) => {
+  const { mode = 'desktop', apiUrl, token, identifier, password } = req.body || {};
+
+  if (mode === 'beeper') {
+    if (!identifier || !password) {
+      return res.status(400).json({ error: 'Bitte Beeper-Handle/E-Mail und Passwort eingeben.' });
+    }
+    try {
+      const userIdent = String(identifier).trim();
+      const loginPayload = {
+        type: 'm.login.password',
+        identifier:
+          userIdent.includes('@') && !userIdent.startsWith('@')
+            ? { type: 'm.id.thirdparty', medium: 'email', address: userIdent }
+            : { type: 'm.id.user', user: userIdent },
+        password: String(password),
+        initial_device_display_name: 'Beeper Web Beta v1.0 (iPad)',
+      };
+      const resp = await fetch('https://matrix.beeper.com/_matrix/client/v3/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(loginPayload),
+        signal: AbortSignal.timeout(10000),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        return res.status(resp.status).json({
+          error: data.error || 'Anmeldung bei Beeper fehlgeschlagen',
+          errcode: data.errcode,
+        });
+      }
+      return res.json({
+        ok: true,
+        mode: 'matrix',
+        accessToken: data.access_token,
+        user: {
+          id: data.user_id,
+          fullName: userIdent.replace(/^@/, '').split(':')[0],
+          username: data.user_id,
+          deviceId: data.device_id,
+        },
+      });
+    } catch (err) {
+      return res.status(502).json({ error: `Beeper Login nicht erreichbar: ${err.message}` });
+    }
+  }
+
+  const targetUrl = String(apiUrl || process.env.BEEPER_API_URL || 'http://localhost:23373').trim().replace(/\/+$/, '');
+  const targetToken = String(token || process.env.BEEPER_ACCESS_TOKEN || '').trim();
+
+  try {
+    const result = await beeperFetch({ baseUrl: targetUrl, token: targetToken }, '/v1/accounts', { timeoutMs: 5000 });
+    if (!result.ok) {
+      return res.status(result.status).json({ error: result.data?.message || `HTTP ${result.status}` });
+    }
+    const items = Array.isArray(result.data) ? result.data : result.data?.items || [];
+    const primaryUser = items.find((a) => a.user)?.user || {};
+    return res.json({
+      ok: true,
+      mode: 'desktop',
+      apiUrl: targetUrl,
+      user: {
+        id: primaryUser.id || 'beeper-desktop',
+        fullName: primaryUser.fullName || 'Beeper Desktop',
+        username: primaryUser.username || `${items.length} Netzwerke`,
+        networkCount: items.length,
+      },
+    });
+  } catch (err) {
+    return res.status(502).json({
+      error:
+        err?.cause?.code === 'ECONNREFUSED'
+          ? 'Beeper Desktop API nicht erreichbar (läuft Beeper Desktop / Tunnel?)'
+          : err.message,
+    });
+  }
+});
+
 // List connected accounts
 app.get('/api/accounts', async (req, res) => {
   const config = getBeeperConfig(req);
-  if (config.forceDemo) {
-    return res.json({ items: demoState.accounts });
-  }
   if (config.matrixMode) {
     return res.json({
       items: [{ accountID: 'matrix.beeper.com', network: 'Beeper Matrix', statusText: 'Connected' }],
@@ -376,6 +279,7 @@ app.get('/api/chats', async (req, res) => {
           preview: { text: previewText, timestamp: ts },
         };
       });
+      if (unreadOnly === 'true') chats = chats.filter((c) => c.unreadCount > 0);
       if (q) {
         const query = String(q).toLowerCase();
         chats = chats.filter((c) => c.title.toLowerCase().includes(query));
@@ -385,36 +289,6 @@ app.get('/api/chats', async (req, res) => {
     } catch (err) {
       return handleProxyError(res, err);
     }
-  }
-
-  if (config.forceDemo) {
-    let chats = [...demoState.chats];
-    if (archived === 'true') {
-      chats = chats.filter((c) => c.isArchived);
-    } else if (archived !== 'all') {
-      chats = chats.filter((c) => !c.isArchived);
-    }
-    if (unreadOnly === 'true') {
-      chats = chats.filter((c) => (c.unreadCount || 0) > 0);
-    }
-    if (accountIDs) {
-      const ids = String(accountIDs).split(',').filter(Boolean);
-      if (ids.length > 0) chats = chats.filter((c) => ids.includes(c.accountID));
-    }
-    if (q) {
-      const query = String(q).toLowerCase();
-      chats = chats.filter(
-        (c) =>
-          c.title.toLowerCase().includes(query) ||
-          c.network.toLowerCase().includes(query) ||
-          (c.preview?.text || '').toLowerCase().includes(query)
-      );
-    }
-    chats.sort((a, b) => {
-      if (Boolean(a.isPinned) !== Boolean(b.isPinned)) return a.isPinned ? -1 : 1;
-      return new Date(b.lastActivity) - new Date(a.lastActivity);
-    });
-    return res.json({ items: chats, hasMore: false });
   }
 
   try {
@@ -448,16 +322,8 @@ app.get('/api/chats', async (req, res) => {
 // Get single chat details
 app.get('/api/chats/:chatId', async (req, res) => {
   const config = getBeeperConfig(req);
-  const { chatId } = req.params;
-
-  if (config.forceDemo) {
-    const chat = demoState.chats.find((c) => c.id === chatId);
-    if (!chat) return res.status(404).json({ error: 'Chat not found' });
-    return res.json(chat);
-  }
-
   try {
-    const result = await beeperFetch(config, `/v1/chats/${encodeURIComponent(chatId)}`);
+    const result = await beeperFetch(config, `/v1/chats/${encodeURIComponent(req.params.chatId)}`);
     res.status(result.status).json(result.data);
   } catch (err) {
     handleProxyError(res, err);
@@ -497,11 +363,6 @@ app.get('/api/chats/:chatId/messages', async (req, res) => {
     }
   }
 
-  if (config.forceDemo) {
-    const items = demoState.messagesByChat[chatId] || [];
-    return res.json({ items, hasMore: false });
-  }
-
   try {
     const params = new URLSearchParams();
     if (req.query.cursor) params.set('cursor', String(req.query.cursor));
@@ -522,7 +383,7 @@ app.post('/api/chats/:chatId/messages', async (req, res) => {
   const { text, replyToMessageID } = req.body || {};
 
   if (!text || !String(text).trim()) {
-    return res.status(400).json({ error: 'Message text is required' });
+    return res.status(400).json({ error: 'Nachrichtentext fehlt' });
   }
 
   if (config.matrixMode) {
@@ -537,32 +398,6 @@ app.post('/api/chats/:chatId/messages', async (req, res) => {
     } catch (err) {
       return handleProxyError(res, err);
     }
-  }
-
-  if (config.forceDemo) {
-    const chat = demoState.chats.find((c) => c.id === chatId);
-    if (!chat) return res.status(404).json({ error: 'Chat not found' });
-    const msg = {
-      id: `msg_demo_${Date.now()}`,
-      chatID: chatId,
-      senderID: 'self',
-      senderName: 'Alex Mercer',
-      isSender: true,
-      text: String(text).trim(),
-      timestamp: new Date().toISOString(),
-      ...(replyToMessageID ? { replyToMessageID } : {}),
-    };
-    demoState.messagesByChat[chatId] = demoState.messagesByChat[chatId] || [];
-    demoState.messagesByChat[chatId].push(msg);
-    chat.preview = {
-      id: msg.id,
-      text: msg.text,
-      timestamp: msg.timestamp,
-      senderID: msg.senderID,
-    };
-    chat.lastActivity = msg.timestamp;
-    chat.unreadCount = 0;
-    return res.status(201).json({ chatID: chatId, pendingMessageID: msg.id, message: msg });
   }
 
   try {
@@ -585,15 +420,6 @@ app.put('/api/chats/:chatId/messages/:messageId', async (req, res) => {
   const { chatId, messageId } = req.params;
   const { text } = req.body || {};
 
-  if (config.forceDemo) {
-    const list = demoState.messagesByChat[chatId] || [];
-    const msg = list.find((m) => m.id === messageId);
-    if (!msg) return res.status(404).json({ error: 'Message not found' });
-    msg.text = String(text || '').trim();
-    msg.edited = true;
-    return res.json(msg);
-  }
-
   try {
     const result = await beeperFetch(
       config,
@@ -610,12 +436,6 @@ app.put('/api/chats/:chatId/messages/:messageId', async (req, res) => {
 app.delete('/api/chats/:chatId/messages/:messageId', async (req, res) => {
   const config = getBeeperConfig(req);
   const { chatId, messageId } = req.params;
-
-  if (config.forceDemo) {
-    const list = demoState.messagesByChat[chatId] || [];
-    demoState.messagesByChat[chatId] = list.filter((m) => m.id !== messageId);
-    return res.json({ deleted: true });
-  }
 
   try {
     const result = await beeperFetch(
@@ -634,13 +454,8 @@ app.post('/api/chats/:chatId/:action(read|unread|archive)', async (req, res) => 
   const config = getBeeperConfig(req);
   const { chatId, action } = req.params;
 
-  if (config.forceDemo) {
-    const chat = demoState.chats.find((c) => c.id === chatId);
-    if (!chat) return res.status(404).json({ error: 'Chat not found' });
-    if (action === 'read') chat.unreadCount = 0;
-    if (action === 'unread') chat.unreadCount = Math.max(1, chat.unreadCount || 0);
-    if (action === 'archive') chat.isArchived = !chat.isArchived;
-    return res.json(chat);
+  if (config.matrixMode) {
+    return res.json({ ok: true });
   }
 
   try {
@@ -655,40 +470,11 @@ app.post('/api/chats/:chatId/:action(read|unread|archive)', async (req, res) => 
   }
 });
 
-// Search messages across all chats
-app.get('/api/messages/search', async (req, res) => {
-  const config = getBeeperConfig(req);
-  const q = String(req.query.q || '').trim();
-
-  if (config.forceDemo) {
-    const lower = q.toLowerCase();
-    const items = [];
-    for (const [chatId, msgs] of Object.entries(demoState.messagesByChat)) {
-      for (const m of msgs) {
-        if (!lower || m.text.toLowerCase().includes(lower)) {
-          items.push({ ...m, chatID: chatId });
-        }
-      }
-    }
-    return res.json({ items });
-  }
-
-  try {
-    const params = new URLSearchParams();
-    if (q) params.set('query', q);
-    const result = await beeperFetch(config, `/v1/messages/search?${params.toString()}`);
-    res.status(result.status).json(result.data);
-  } catch (err) {
-    handleProxyError(res, err);
-  }
-});
-
 // Proxy encrypted mxc:// or local media assets from Beeper Desktop API
 app.get('/api/assets', async (req, res) => {
   const config = getBeeperConfig(req);
   const targetUrl = req.query.url;
   if (!targetUrl) return res.status(400).json({ error: 'Missing url query parameter' });
-  if (config.forceDemo) return res.status(404).end();
 
   try {
     const response = await beeperFetch(
@@ -706,7 +492,7 @@ app.get('/api/assets', async (req, res) => {
   }
 });
 
-// SPA fallback for non-API routes
+// SPA fallback
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
 });

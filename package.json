@@ -1,6 +1,6 @@
 {
   "name": "beeper-web",
-  "version": "1.0.0",
+  "version": "1.0.0-beta.1",
   "description": "Beeper Desktop API Web App with Express proxy, Vercel deployment setup, and iPadOS-inspired Split-View UI",
   "main": "server.js",
   "scripts": {

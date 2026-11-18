@@ -5,37 +5,44 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-  <meta name="apple-mobile-web-app-title" content="Beeper Web" />
-  <meta name="description" content="Material 3 Expressive & Material You iPad Web Client für die Beeper Desktop API." />
-  <title>Beeper Web — Material 3 Expressive</title>
+  <meta name="apple-mobile-web-app-title" content="Beeper Web Beta v1.0" />
+  <meta name="description" content="Beeper Web Beta v1.0 — Material 3 Expressive iPad Split-View Client für die Beeper Desktop API." />
+  <title>Beeper Web · Beta v1.0</title>
   <link rel="icon" type="image/svg+xml" href="/icon.svg" />
   <link rel="apple-touch-icon" href="/icon.svg" />
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <!-- Material 3 Expressive App Shell -->
   <div id="app" class="m3-shell">
     <div id="sidebar-backdrop" class="sidebar-backdrop" aria-hidden="true"></div>
 
-    <!-- Column 1: M3 Expressive Navigation Drawer -->
+    <!-- Column 1: M3 Expressive Drawer (inspired by IMG_1299.webp) -->
     <aside id="sidebar" class="m3-drawer" aria-label="Navigation und Netzwerke">
       <div class="drawer-header">
         <div class="brand">
-          <div class="brand-badge">B</div>
+          <div class="brand-scallop" aria-hidden="true">
+            <svg viewBox="0 0 40 40" class="scallop-svg">
+              <path d="M20 2c2.8 0 4.6 2.5 7.2 1.8 2.6-.7 5.2 1.1 5.9 3.7.7 2.6 3.5 3.6 4.9 5.9 1.4 2.3.5 5.2-.9 7.4 1.4 2.2 2.3 5.1.9 7.4-1.4 2.3-4.2 3.3-4.9 5.9-.7 2.6-3.3 4.4-5.9 3.7-2.6-.7-4.4 1.8-7.2 1.8s-4.6-2.5-7.2-1.8c-2.6.7-5.2-1.1-5.9-3.7-.7-2.6-3.5-3.6-4.9-5.9-1.4-2.3-.5-5.2.9-7.4-1.4-2.2-2.3-5.1-.9-7.4 1.4-2.3 4.2-3.3 4.9-5.9.7-2.6 3.3-4.4 5.9-3.7C15.4 4.5 17.2 2 20 2z" fill="currentColor"/>
+            </svg>
+            <span class="scallop-letter">B</span>
+          </div>
           <div class="brand-text">
-            <span class="brand-title">Beeper</span>
-            <span class="brand-sub">M3 Expressive</span>
+            <div class="brand-row">
+              <span class="brand-title">Beeper</span>
+              <span class="beta-pill">Beta v1.0</span>
+            </div>
+            <span class="brand-sub">Material 3 Expressive</span>
           </div>
         </div>
-        <button id="btn-close-sidebar" class="m3-icon-btn mobile-only" aria-label="Menü schließen">✕</button>
+        <button id="btn-close-sidebar" class="m3-circle-close mobile-only" aria-label="Menü schließen">✕</button>
       </div>
 
       <!-- Signed-in Beeper Account Card -->
       <button id="account-card" class="m3-account-card" title="Beeper-Konto & Verbindung">
-        <div id="account-avatar" class="m3-avatar m3-avatar-sm">AM</div>
+        <div id="account-avatar" class="m3-avatar m3-avatar-sm">?</div>
         <div class="account-meta">
           <span id="account-name" class="account-name">Nicht angemeldet</span>
-          <span id="account-handle" class="account-handle">Klicken zum Anmelden</span>
+          <span id="account-handle" class="account-handle">Klicken zum Verbinden</span>
         </div>
         <span id="status-dot" class="status-dot"></span>
       </button>
@@ -44,17 +51,17 @@
         <div class="nav-group">
           <div class="nav-group-label">Postfach</div>
           <button class="m3-nav-pill active" data-filter="all">
-            <span class="nav-icon">💬</span>
+            <span class="nav-icon">✓</span>
             <span class="nav-label">Alle Chats</span>
             <span id="badge-all" class="m3-badge hidden">0</span>
           </button>
           <button class="m3-nav-pill" data-filter="unread">
-            <span class="nav-icon">✨</span>
+            <span class="nav-icon">✦</span>
             <span class="nav-label">Ungelesen</span>
             <span id="badge-unread" class="m3-badge hidden">0</span>
           </button>
           <button class="m3-nav-pill" data-filter="archived">
-            <span class="nav-icon">📦</span>
+            <span class="nav-icon">◫</span>
             <span class="nav-label">Archiviert</span>
           </button>
         </div>
@@ -84,25 +91,40 @@
       </div>
 
       <div class="drawer-footer">
-        <button id="btn-open-login" class="m3-filled-tonal-btn">
+        <button id="btn-open-login" class="m3-pink-pill-btn">
           <span>🔑</span>
-          <span id="login-btn-label">Beeper-Konto</span>
+          <span id="login-btn-label">Beeper verbinden</span>
         </button>
       </div>
     </aside>
 
-    <!-- Column 2: Expressive Chat List Container -->
+    <!-- Column 2: Chat List Pane -->
     <section id="chat-list-pane" class="m3-list-pane" aria-label="Chat-Liste">
       <header class="m3-list-header">
         <div class="list-header-top">
           <button id="btn-open-sidebar" class="m3-icon-btn tablet-only" aria-label="Menü öffnen">☰</button>
-          <h1 id="list-title" class="m3-headline">Alle Chats</h1>
+          <h1 id="list-title" class="m3-headline">Chats</h1>
           <button id="btn-refresh" class="m3-icon-btn" title="Aktualisieren" aria-label="Chats aktualisieren">↻</button>
         </div>
+
+        <!-- Connected 3-Way Segmented Pill Group (IMG_1299.webp top-right) -->
+        <div class="m3-connected-group" role="tablist" aria-label="Chat-Filter">
+          <button class="m3-connected-btn active" data-filter="all">✓ Alle</button>
+          <button class="m3-connected-btn" data-filter="unread">Ungelesen</button>
+          <button class="m3-connected-btn" data-filter="archived">Archiv</button>
+        </div>
+
         <div class="m3-search-bar">
           <span class="search-icon">🔍</span>
-          <input id="search-input" type="search" placeholder="Chats durchsuchen (⌘K)" autocomplete="off" />
+          <input id="search-input" type="search" placeholder="Suchen (⌘K)" autocomplete="off" />
           <button id="btn-clear-search" class="clear-search hidden" aria-label="Suche leeren">✕</button>
+        </div>
+
+        <!-- Wavy Expressive Progress Indicator (IMG_1299.webp center) -->
+        <div id="wavy-loader" class="m3-wavy-loader hidden" aria-hidden="true">
+          <svg viewBox="0 0 240 12" preserveAspectRatio="none" class="wavy-svg">
+            <path d="M0 6 Q 10 1, 20 6 T 40 6 T 60 6 T 80 6 T 100 6 T 120 6 T 140 6 T 160 6 T 180 6 T 200 6 T 220 6 T 240 6" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+          </svg>
         </div>
       </header>
 
@@ -113,11 +135,12 @@
     <main id="stage-pane" class="m3-stage-pane" aria-label="Aktive Konversation">
       <div id="stage-empty" class="stage-empty">
         <div class="m3-empty-card">
-          <div class="empty-hero-icon">💬</div>
-          <h2>Bereit für deine Chats</h2>
-          <p>Material 3 Expressive iPad Split-View für WhatsApp, Telegram, Signal, iMessage, Slack &amp; Discord.</p>
+          <div class="empty-hero-squircle">💬</div>
+          <span class="beta-pill">Beta v1.0</span>
+          <h2>Beeper Web für dein iPad</h2>
+          <p>Verbinde deine lokale <strong>Beeper Desktop API</strong> (inkl. WhatsApp, iMessage, Signal, Telegram &amp; Slack) oder melde dich mit deinem Beeper-Konto an.</p>
           <div class="empty-actions">
-            <button id="btn-empty-login" class="m3-filled-btn">Mit Beeper anmelden</button>
+            <button id="btn-empty-login" class="m3-filled-btn">Jetzt verbinden</button>
           </div>
         </div>
       </div>
@@ -133,10 +156,14 @@
             </div>
           </div>
 
-          <div class="m3-floating-toolbar">
-            <button id="btn-mark-unread" class="m3-icon-btn" title="Als ungelesen markieren" aria-label="Ungelesen">✨</button>
-            <button id="btn-archive-chat" class="m3-icon-btn" title="Archivieren" aria-label="Archivieren">📦</button>
-            <button id="btn-toggle-inspector" class="m3-icon-btn" title="Details" aria-label="Details">ℹ</button>
+          <!-- Floating Pill Toolbar + Detached Pink Squircle Action (IMG_1299.webp top-center!) -->
+          <div class="m3-toolbar-cluster">
+            <div class="m3-floating-toolbar">
+              <button id="btn-mark-unread" class="m3-icon-btn" title="Als ungelesen markieren" aria-label="Ungelesen">✓</button>
+              <button id="btn-archive-chat" class="m3-icon-btn" title="Archivieren" aria-label="Archivieren">◫</button>
+              <button id="btn-toggle-inspector" class="m3-icon-btn" title="Details" aria-label="Details">ℹ</button>
+            </div>
+            <button id="btn-focus-composer" class="m3-squircle-action" title="Nachricht verfassen" aria-label="Schreiben">✎</button>
           </div>
         </header>
 
@@ -171,37 +198,44 @@
     </aside>
   </div>
 
-  <!-- Beeper Account Sign-In & Connection Modal -->
+  <!-- Beeper Connection & Account Modal (No Demo!) -->
   <div id="auth-modal" class="m3-modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="auth-modal-title">
     <div class="m3-modal-card">
       <div class="m3-modal-header">
         <div>
-          <h2 id="auth-modal-title">Bei Beeper anmelden</h2>
-          <p class="modal-sub">Verbinde dein Beeper-Konto oder deinen lokalen Beeper Desktop</p>
+          <div class="modal-title-row">
+            <h2 id="auth-modal-title">Beeper verbinden</h2>
+            <span class="beta-pill">Beta v1.0</span>
+          </div>
+          <p class="modal-sub">Desktop API (empfohlen) oder direktes Beeper-Konto</p>
         </div>
-        <button id="btn-close-auth" class="m3-icon-btn" aria-label="Schließen">✕</button>
+        <button id="btn-close-auth" class="m3-circle-close" aria-label="Schließen">✕</button>
       </div>
 
       <div class="m3-segmented-tabs" role="tablist">
-        <button class="seg-tab active" data-auth-tab="beeper" role="tab">Beeper-Konto</button>
-        <button class="seg-tab" data-auth-tab="desktop" role="tab">Desktop API</button>
-        <button class="seg-tab" data-auth-tab="demo" role="tab">Demo</button>
+        <button class="seg-tab active" data-auth-tab="desktop" role="tab">Desktop API</button>
+        <button class="seg-tab" data-auth-tab="beeper" role="tab">Beeper-Konto</button>
       </div>
 
-      <!-- Tab 1: Beeper Account (Matrix + Google SSO) Login -->
-      <form id="form-auth-beeper" class="modal-body">
-        <button id="btn-google-login" type="button" class="m3-google-btn">
-          <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
-            <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
-            <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.29v3.14C3.26 21.3 7.31 24 12 24z"/>
-            <path fill="#FBBC05" d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14z"/>
-            <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96z"/>
-          </svg>
-          <span>Mit Google bei Beeper anmelden</span>
-        </button>
+      <!-- Tab 1: Beeper Desktop API -->
+      <form id="form-auth-desktop" class="modal-body">
+        <div class="m3-field">
+          <label for="desktop-url">Beeper Desktop API URL</label>
+          <input id="desktop-url" type="url" value="http://localhost:23373" placeholder="http://localhost:23373" required />
+        </div>
+        <div class="m3-field">
+          <label for="desktop-token">Bearer Access Token</label>
+          <input id="desktop-token" type="password" placeholder="Aus Beeper Desktop → Einstellungen → Developers" autocomplete="off" />
+        </div>
+        <p class="form-hint">Auch für Google-verknüpfte Konten: In Beeper Desktop mit Google einloggen, API aktivieren &amp; Token hier einfügen (auf Vercel über Tailscale / Cloudflare Tunnel).</p>
+        <div id="auth-error-desktop" class="m3-error-box hidden"></div>
+        <div class="modal-actions">
+          <button type="submit" class="m3-filled-btn">Verbinden</button>
+        </div>
+      </form>
 
-        <div class="m3-or-divider"><span>oder mit Beeper-Passwort</span></div>
-
+      <!-- Tab 2: Beeper Account (Matrix) -->
+      <form id="form-auth-beeper" class="modal-body hidden">
         <div class="m3-field">
           <label for="beeper-ident">Beeper-Benutzername oder E-Mail</label>
           <input id="beeper-ident" type="text" placeholder="@deinname:beeper.com oder E-Mail" autocomplete="username" />
@@ -210,44 +244,16 @@
           <label for="beeper-pass">Passwort</label>
           <input id="beeper-pass" type="password" placeholder="Dein Beeper-Passwort" autocomplete="current-password" />
         </div>
-        <p class="form-hint">Meldet dich über <code>matrix.beeper.com</code> (SSO / Google oder Passwort) an.</p>
+        <p class="form-hint">Direkte Anmeldung über <code>matrix.beeper.com</code> (unverschlüsselte Räume).</p>
         <div id="auth-error-beeper" class="m3-error-box hidden"></div>
         <div class="modal-actions">
-          <button type="submit" class="m3-filled-btn">Mit Beeper anmelden</button>
+          <button type="submit" class="m3-filled-btn">Anmelden</button>
         </div>
       </form>
-
-      <!-- Tab 2: Beeper Desktop API Login -->
-      <form id="form-auth-desktop" class="modal-body hidden">
-        <div class="m3-field">
-          <label for="desktop-url">Beeper Desktop API URL</label>
-          <input id="desktop-url" type="url" value="http://localhost:23373" placeholder="http://localhost:23373" />
-        </div>
-        <div class="m3-field">
-          <label for="desktop-token">Bearer Access Token</label>
-          <input id="desktop-token" type="password" placeholder="Aus Beeper → Einstellungen → Developers" autocomplete="off" />
-        </div>
-        <p class="form-hint">Ideal lokal auf Port <code>23373</code> oder über Tailscale / Cloudflare Tunnel auf Vercel.</p>
-        <div id="auth-error-desktop" class="m3-error-box hidden"></div>
-        <div class="modal-actions">
-          <button type="submit" class="m3-filled-btn">Verbinden &amp; Anmelden</button>
-        </div>
-      </form>
-
-      <!-- Tab 3: Demo Account -->
-      <div id="form-auth-demo" class="modal-body hidden">
-        <div class="m3-demo-box">
-          <strong>Demo-Konto: Alex Mercer</strong>
-          <p>Testet die komplette Material 3 Expressive iPad-UI sofort mit WhatsApp, Slack, iMessage, Telegram, Signal &amp; Discord.</p>
-        </div>
-        <div class="modal-actions">
-          <button id="btn-demo-signin" type="button" class="m3-filled-btn">Im Demo-Modus starten</button>
-        </div>
-      </div>
 
       <div id="signed-in-bar" class="m3-signed-in-bar hidden">
-        <span id="signed-in-summary">Angemeldet</span>
-        <button id="btn-signout" type="button" class="m3-text-btn">Abmelden</button>
+        <span id="signed-in-summary">Verbunden</span>
+        <button id="btn-signout" type="button" class="m3-text-btn">Trennen</button>
       </div>
     </div>
   </div>

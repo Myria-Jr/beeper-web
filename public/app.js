@@ -27,7 +27,7 @@ function getInitials(title = '') {
 }
 
 function hashColor(str = '') {
-  const palette = ['#0B57D0', '#2E6B4E', '#9C4130', '#8E2463', '#825500', '#006A6A', '#3B5BA9', '#6750A4'];
+  const palette = ['#6750A4', '#0099E5', '#2E6B4E', '#9C4130', '#8E2463', '#825500', '#006A6A', '#3B5BA9'];
   let hash = 0;
   for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
   return palette[Math.abs(hash) % palette.length];
@@ -71,8 +71,7 @@ const savedUser = (() => {
 
 const state = {
   user: savedUser,
-  authMode: localStorage.getItem('beeper_auth_mode') || 'demo',
-  demo: localStorage.getItem('beeper_demo') !== '0',
+  authMode: localStorage.getItem('beeper_auth_mode') || 'desktop',
   apiUrl: localStorage.getItem('beeper_url') || 'http://localhost:23373',
   token: localStorage.getItem('beeper_token') || '',
   theme: localStorage.getItem('beeper_theme') || 'light',
@@ -101,6 +100,7 @@ const els = {
   listTitle: document.getElementById('list-title'),
   searchInput: document.getElementById('search-input'),
   btnClearSearch: document.getElementById('btn-clear-search'),
+  wavyLoader: document.getElementById('wavy-loader'),
   chatList: document.getElementById('chat-list'),
   stageEmpty: document.getElementById('stage-empty'),
   stageActive: document.getElementById('stage-active'),
@@ -126,7 +126,7 @@ function showToast(msg) {
   els.toast.textContent = msg;
   els.toast.classList.remove('hidden');
   clearTimeout(showToast._timer);
-  showToast._timer = setTimeout(() => els.toast.classList.add('hidden'), 2600);
+  showToast._timer = setTimeout(() => els.toast.classList.add('hidden'), 2800);
 }
 
 function applyTheme(theme) {
@@ -151,16 +151,18 @@ function updateAccountUI() {
   if (user) {
     els.accountAvatar.textContent = getInitials(user.fullName || user.username || 'B');
     els.accountName.textContent = user.fullName || 'Beeper User';
-    els.accountHandle.textContent = state.demo ? 'Demo-Konto · aktiv' : (user.username || user.id);
-    els.statusDot.className = `status-dot ${state.demo ? 'demo' : 'live'}`;
+    els.accountHandle.textContent = user.username || user.id || 'Verbunden';
+    els.statusDot.className = 'status-dot live';
     els.signedInBar.classList.remove('hidden');
-    els.signedInSummary.textContent = `Angemeldet als ${user.fullName || user.username}`;
+    els.signedInSummary.textContent = `Verbunden als ${user.fullName || user.username}`;
+    document.getElementById('login-btn-label').textContent = 'Konto & API';
   } else {
     els.accountAvatar.textContent = '?';
-    els.accountName.textContent = 'Nicht angemeldet';
-    els.accountHandle.textContent = 'Klicken zum Anmelden';
+    els.accountName.textContent = 'Nicht verbunden';
+    els.accountHandle.textContent = 'Klicken zum Verbinden';
     els.statusDot.className = 'status-dot';
     els.signedInBar.classList.add('hidden');
+    document.getElementById('login-btn-label').textContent = 'Beeper verbinden';
   }
 }
 
@@ -168,8 +170,7 @@ function buildHeaders(extra = {}) {
   const headers = { ...extra };
   if (state.apiUrl) headers['x-beeper-url'] = state.apiUrl;
   if (state.token) headers['x-beeper-token'] = state.token;
-  if (state.demo) headers['x-beeper-demo'] = '1';
-  if (!state.demo && state.authMode === 'matrix') {
+  if (state.authMode === 'matrix') {
     headers['x-beeper-mode'] = 'matrix';
     if (state.user?.id) headers['x-beeper-userid'] = state.user.id;
   }
@@ -187,15 +188,32 @@ async function apiFetch(path, options = {}) {
 }
 
 async function initApp() {
-  if (!state.user) {
-    // Auto-sign-in to Demo on first visit so UI is immediately usable, while offering Beeper Login
-    state.user = { id: '@alexmercer:beeper.com', fullName: 'Alex Mercer', username: '@alexmercer' };
-    state.demo = true;
-    localStorage.setItem('beeper_user', JSON.stringify(state.user));
-    localStorage.setItem('beeper_demo', '1');
-  }
   updateAccountUI();
-  await Promise.all([loadAccounts(), loadChats()]);
+
+  if (!state.user) {
+    // Check if server env vars (BEEPER_API_URL / BEEPER_ACCESS_TOKEN) are already live
+    try {
+      const health = await apiFetch('/api/health');
+      if (health.connected) {
+        state.user = {
+          id: health.userId || 'beeper-desktop',
+          fullName: 'Beeper Desktop',
+          username: `${health.accountCount ?? ''} Netzwerke`.trim(),
+        };
+        localStorage.setItem('beeper_user', JSON.stringify(state.user));
+        updateAccountUI();
+      }
+    } catch {
+      // Remain unconnected until user signs in
+    }
+  }
+
+  if (state.user) {
+    await Promise.all([loadAccounts(), loadChats()]);
+  } else {
+    els.chatList.innerHTML =
+      '<div style="padding:32px 18px;text-align:center;color:var(--md-on-surface-variant);font-size:13.5px;">Noch nicht verbunden.<br/>Klicke auf <strong>Beeper verbinden</strong>, um deine Chats zu laden.</div>';
+  }
 }
 
 async function loadAccounts() {
@@ -210,6 +228,9 @@ async function loadAccounts() {
 }
 
 async function loadChats() {
+  if (!state.user) return;
+  els.wavyLoader.classList.remove('hidden');
+
   const params = new URLSearchParams();
   if (state.searchQuery) params.set('q', state.searchQuery);
   if (state.filter === 'unread') params.set('unreadOnly', 'true');
@@ -222,7 +243,9 @@ async function loadChats() {
     renderChatList();
     updateBadges();
   } catch (err) {
-    els.chatList.innerHTML = `<div style="padding:20px;color:var(--md-on-surface-variant);font-size:13.5px;">Fehler: ${escapeHtml(err.message)}</div>`;
+    els.chatList.innerHTML = `<div style="padding:24px 16px;color:var(--md-on-surface-variant);font-size:13.5px;">Verbindungsfehler: ${escapeHtml(err.message)}</div>`;
+  } finally {
+    els.wavyLoader.classList.add('hidden');
   }
 }
 
@@ -256,7 +279,8 @@ function renderNetworks() {
 function renderChatList() {
   els.chatList.innerHTML = '';
   if (state.chats.length === 0) {
-    els.chatList.innerHTML = '<div style="padding:28px 16px;text-align:center;color:var(--md-on-surface-variant);font-size:14px;">Keine Chats gefunden.</div>';
+    els.chatList.innerHTML =
+      '<div style="padding:28px 16px;text-align:center;color:var(--md-on-surface-variant);font-size:14px;">Keine Chats gefunden.</div>';
     return;
   }
 
@@ -471,6 +495,22 @@ function renderInspector(chat) {
   `;
 }
 
+function setFilter(filter) {
+  state.filter = filter;
+  document.querySelectorAll('.m3-nav-pill[data-filter]').forEach((b) => {
+    b.classList.toggle('active', b.dataset.filter === filter);
+  });
+  document.querySelectorAll('.m3-connected-btn[data-filter]').forEach((b) => {
+    const active = b.dataset.filter === filter;
+    b.classList.toggle('active', active);
+    const label = b.dataset.filter === 'all' ? 'Alle' : b.dataset.filter === 'unread' ? 'Ungelesen' : 'Archiv';
+    b.textContent = active ? `✓ ${label}` : label;
+  });
+  els.listTitle.textContent = filter === 'all' ? 'Chats' : filter === 'unread' ? 'Ungelesen' : 'Archiv';
+  loadChats();
+  closeSidebar();
+}
+
 function openSidebar() {
   els.sidebar.classList.add('open');
   els.sidebarBackdrop.classList.add('open');
@@ -495,68 +535,9 @@ document.querySelectorAll('.seg-tab').forEach((tab) => {
     document.querySelectorAll('.seg-tab').forEach((t) => t.classList.remove('active'));
     tab.classList.add('active');
     const target = tab.dataset.authTab;
-    document.getElementById('form-auth-beeper').classList.toggle('hidden', target !== 'beeper');
     document.getElementById('form-auth-desktop').classList.toggle('hidden', target !== 'desktop');
-    document.getElementById('form-auth-demo').classList.toggle('hidden', target !== 'demo');
+    document.getElementById('form-auth-beeper').classList.toggle('hidden', target !== 'beeper');
   });
-});
-
-// Login: Google SSO via Beeper Matrix
-document.getElementById('btn-google-login').addEventListener('click', async () => {
-  const errBox = document.getElementById('auth-error-beeper');
-  errBox.classList.add('hidden');
-  try {
-    const resp = await fetch('/api/auth/sso-url');
-    const data = await resp.json();
-    if (!resp.ok || !data.ssoUrl) throw new Error(data.error || 'SSO-URL konnte nicht geladen werden');
-    window.location.href = data.ssoUrl;
-  } catch (err) {
-    errBox.textContent = err.message;
-    errBox.classList.remove('hidden');
-  }
-});
-
-// Show SSO error if redirected back with error
-(() => {
-  const params = new URLSearchParams(window.location.search);
-  const ssoError = params.get('sso_error');
-  if (ssoError) {
-    showToast(`Google-Anmeldung: ${ssoError}`);
-    window.history.replaceState({}, '', '/');
-  }
-})();
-
-// Login: Beeper Account (matrix.beeper.com)
-document.getElementById('form-auth-beeper').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const errBox = document.getElementById('auth-error-beeper');
-  errBox.classList.add('hidden');
-  const identifier = document.getElementById('beeper-ident').value.trim();
-  const password = document.getElementById('beeper-pass').value;
-  try {
-    const resp = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode: 'beeper', identifier, password }),
-    });
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data.error || 'Anmeldung fehlgeschlagen');
-    state.user = data.user;
-    state.authMode = 'matrix';
-    state.demo = false;
-    state.token = data.accessToken || '';
-    localStorage.setItem('beeper_user', JSON.stringify(state.user));
-    localStorage.setItem('beeper_auth_mode', 'matrix');
-    localStorage.setItem('beeper_demo', '0');
-    localStorage.setItem('beeper_token', state.token);
-    updateAccountUI();
-    els.authModal.classList.add('hidden');
-    showToast(`Willkommen, ${state.user.fullName}!`);
-    await Promise.all([loadAccounts(), loadChats()]);
-  } catch (err) {
-    errBox.textContent = err.message;
-    errBox.classList.remove('hidden');
-  }
 });
 
 // Login: Beeper Desktop API
@@ -576,12 +557,10 @@ document.getElementById('form-auth-desktop').addEventListener('submit', async (e
     if (!resp.ok) throw new Error(data.error || 'Verbindung fehlgeschlagen');
     state.user = data.user;
     state.authMode = 'desktop';
-    state.demo = false;
     state.apiUrl = apiUrl;
     state.token = token;
     localStorage.setItem('beeper_user', JSON.stringify(state.user));
     localStorage.setItem('beeper_auth_mode', 'desktop');
-    localStorage.setItem('beeper_demo', '0');
     localStorage.setItem('beeper_url', apiUrl);
     localStorage.setItem('beeper_token', token);
     updateAccountUI();
@@ -594,44 +573,57 @@ document.getElementById('form-auth-desktop').addEventListener('submit', async (e
   }
 });
 
-// Login: Demo Account
-document.getElementById('btn-demo-signin').addEventListener('click', async () => {
-  const data = await fetch('/api/auth/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mode: 'demo' }),
-  }).then((r) => r.json());
-  state.user = data.user;
-  state.authMode = 'demo';
-  state.demo = true;
-  localStorage.setItem('beeper_user', JSON.stringify(state.user));
-  localStorage.setItem('beeper_auth_mode', 'demo');
-  localStorage.setItem('beeper_demo', '1');
-  updateAccountUI();
-  els.authModal.classList.add('hidden');
-  showToast('Demo-Konto aktiviert');
-  await Promise.all([loadAccounts(), loadChats()]);
+// Login: Beeper Account (matrix.beeper.com)
+document.getElementById('form-auth-beeper').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errBox = document.getElementById('auth-error-beeper');
+  errBox.classList.add('hidden');
+  const identifier = document.getElementById('beeper-ident').value.trim();
+  const password = document.getElementById('beeper-pass').value;
+  try {
+    const resp = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'beeper', identifier, password }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Anmeldung fehlgeschlagen');
+    state.user = data.user;
+    state.authMode = 'matrix';
+    state.token = data.accessToken || '';
+    localStorage.setItem('beeper_user', JSON.stringify(state.user));
+    localStorage.setItem('beeper_auth_mode', 'matrix');
+    localStorage.setItem('beeper_token', state.token);
+    updateAccountUI();
+    els.authModal.classList.add('hidden');
+    showToast(`Willkommen, ${state.user.fullName}!`);
+    await Promise.all([loadAccounts(), loadChats()]);
+  } catch (err) {
+    errBox.textContent = err.message;
+    errBox.classList.remove('hidden');
+  }
 });
 
 document.getElementById('btn-signout').addEventListener('click', () => {
   state.user = null;
   state.token = '';
+  state.chats = [];
+  state.accounts = [];
+  state.activeChatId = null;
   localStorage.removeItem('beeper_user');
   localStorage.removeItem('beeper_token');
+  els.stageActive.classList.add('hidden');
+  els.stageEmpty.classList.remove('hidden');
+  els.chatList.innerHTML = '';
+  els.networkList.innerHTML = '';
   updateAccountUI();
-  showToast('Abgemeldet');
+  els.authModal.classList.add('hidden');
+  showToast('Verbindung getrennt');
 });
 
-// Navigation & UI Event Listeners
-document.querySelectorAll('.m3-nav-pill[data-filter]').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.m3-nav-pill[data-filter]').forEach((b) => b.classList.remove('active'));
-    btn.classList.add('active');
-    state.filter = btn.dataset.filter;
-    els.listTitle.textContent = btn.querySelector('.nav-label').textContent;
-    loadChats();
-    closeSidebar();
-  });
+// Filter Pills & Connected Segmented Group
+document.querySelectorAll('.m3-nav-pill[data-filter], .m3-connected-btn[data-filter]').forEach((btn) => {
+  btn.addEventListener('click', () => setFilter(btn.dataset.filter));
 });
 
 document.querySelectorAll('.seed-dot').forEach((dot) => {
@@ -671,6 +663,10 @@ els.composerInput.addEventListener('keydown', (e) => {
 els.composerForm.addEventListener('submit', (e) => {
   e.preventDefault();
   sendMessage(els.composerInput.value);
+});
+
+document.getElementById('btn-focus-composer').addEventListener('click', () => {
+  els.composerInput.focus();
 });
 
 document.getElementById('btn-cancel-reply').addEventListener('click', () => {
@@ -728,6 +724,13 @@ window.addEventListener('keydown', (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
     e.preventDefault();
     els.searchInput.focus();
+  }
+  if (e.key === 'Escape') {
+    els.authModal.classList.add('hidden');
+    if (state.inspectorOpen) {
+      state.inspectorOpen = false;
+      els.inspector.classList.add('hidden');
+    }
   }
 });
 
